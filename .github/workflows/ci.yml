@@ -1,0 +1,152 @@
+name: CI
+
+# Self-contained: nothing here depends on anolishq's own workflows, actions or
+# secrets, so a provider started from this template builds and releases anywhere.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+  HARNESS_WHEEL: "anolis-protocol[conformance] @ https://github.com/anolishq/anolis-protocol/releases/download/v1.10.0/anolis_protocol-1.10.0-py3-none-any.whl"
+
+jobs:
+  check:
+    name: Format, lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - name: Toolchain
+        run: rustup toolchain install stable --profile minimal --component rustfmt,clippy && rustup default stable
+      - name: Format
+        run: cargo fmt --check
+      - name: Lint
+        run: cargo clippy --locked --all-targets -- -D warnings
+
+  test:
+    name: Tests and conformance
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - name: Toolchain
+        run: rustup toolchain install stable --profile minimal && rustup default stable
+      - name: Tests
+        run: cargo test --locked
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7
+        with:
+          python-version: "3.13"
+      - name: Pull anolis-protocol[conformance]
+        run: python -m pip install "$HARNESS_WHEEL"
+      # No failures, and no skip beyond EXPECTED_SKIPS (none) in scripts/conformance.py.
+      - name: Conformance against the provider
+        run: |
+          cargo build --locked
+          python scripts/conformance.py target/debug/anolis-provider-template-rust
+
+  static:
+    name: Static binary (${{ matrix.arch }})
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: x86_64
+            runner: ubuntu-24.04
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - name: Toolchain
+        run: |
+          rustup toolchain install stable --profile minimal && rustup default stable
+          rustup target add "$(uname -m)-unknown-linux-musl"
+      - name: Build the static binary
+        run: |
+          cargo build --locked --release --target "$(uname -m)-unknown-linux-musl"
+          bin="target/$(uname -m)-unknown-linux-musl/release/anolis-provider-template-rust"
+          file "$bin"
+          if ldd "$bin" 2>/dev/null | grep -q '=>'; then
+            echo "::error::the release binary links shared libraries"
+            exit 1
+          fi
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7
+        with:
+          python-version: "3.13"
+      - name: Pull anolis-protocol[conformance]
+        run: python -m pip install "$HARNESS_WHEEL"
+      # The release artifact under the harness, not only the debug build.
+      - name: Conformance against the static binary
+        run: python scripts/conformance.py "target/$(uname -m)-unknown-linux-musl/release/anolis-provider-template-rust"
+
+  rename:
+    name: Rename still builds
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - name: Toolchain
+        run: rustup toolchain install stable --profile minimal --component rustfmt,clippy && rustup default stable
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7
+        with:
+          python-version: "3.13"
+      - name: Pull anolis-protocol[conformance]
+        run: python -m pip install "$HARNESS_WHEEL"
+      # What "Use this template" followed by `just rename` gives an author must
+      # still pass the same checks. It renames twice, because a provider made from
+      # the template runs this job on its own name: the script must rename from
+      # whatever the provider is called now, not only from the template.
+      - name: Rename to a new kind (twice) and run the checks
+        run: |
+          scripts/rename.sh renamed-once
+          scripts/rename.sh renamed-check
+          cargo fmt --check
+          cargo clippy --locked --all-targets -- -D warnings
+          cargo test --locked
+          cargo build --locked
+          python scripts/conformance.py target/debug/anolis-provider-renamed-check
+
+  docs:
+    name: Markdown lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: davidanson/markdownlint-cli2-action@696eb3f2509270d7b882d2aa68347bc676e7af34 # v25
+        with:
+          globs: "**/*.md"
+
+  ok:
+    name: ok
+    if: always()
+    needs: [check, test, static, rename, docs]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      # Passes only when every needed job ended as success or skipped, so a job
+      # that never ran (abandoned) or any other result fails it.
+      - name: Require every needed job passed
+        env:
+          RESULTS: ${{ join(needs.*.result, ' ') }}
+        run: |
+          echo "Job results: $RESULTS"
+          [ -n "${RESULTS// /}" ] || { echo "::error::no job results were given"; exit 1; }
+          for result in $RESULTS; do
+            case "$result" in
+              success | skipped) ;;
+              *) echo "::error::a needed job ended as '$result'"; exit 1 ;;
+            esac
+          done
