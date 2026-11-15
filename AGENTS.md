@@ -21,7 +21,7 @@ the build and release a provider needs.
 - **The heater matches the C++ and Python templates.** Keep the three the same device.
 - **The release binary is static** (musl). CI fails if it links a shared library, so it loads on any Linux host
   whatever its glibc.
-- The SDK is pinned by commit in `Cargo.toml` until it is released.
+- The SDK is pinned by release tag in `Cargo.toml`; `Cargo.lock` records the commit the tag resolved to.
 - The template is never tagged or released itself.
 - An outside instance generated from this template proves the path from another account; if the build or release
   path changes, repeat that proof.
