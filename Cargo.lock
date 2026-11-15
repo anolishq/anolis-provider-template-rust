@@ -34,7 +34,7 @@ checksum = "683d7910e743518b0e34f1186f92494becacb047c7b6bf616c96772180fef923"
 [[package]]
 name = "anolis-provider-sdk"
 version = "0.1.0"
-source = "git+https://github.com/anolishq/anolis-provider-sdk-rust?rev=6cefe6ded3af67edb29db17cf95b95f9a4c4d278#6cefe6ded3af67edb29db17cf95b95f9a4c4d278"
+source = "git+https://github.com/anolishq/anolis-provider-sdk-rust?tag=v0.1.0#543d20639755f6266bbfe8037ccac77991502a1a"
 dependencies = [
  "jsonschema",
  "libc",
