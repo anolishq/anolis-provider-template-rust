@@ -45,7 +45,7 @@ it again the same way.
    covers each.
 5. Keep `config/conformance.yaml` runnable without hardware (a mock mode), so
    the harness and CI can drive your provider anywhere.
-6. Check and test:
+6. Check and test, with Rust 1.88 or later (the SDK's minimum):
 
    ```sh
    just check
