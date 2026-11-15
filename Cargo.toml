@@ -7,7 +7,7 @@ publish = false
 
 [dependencies]
 # Pinned by commit until the SDK is released.
-anolis-provider-sdk = { git = "https://github.com/anolishq/anolis-provider-sdk-rust", rev = "6cefe6ded3af67edb29db17cf95b95f9a4c4d278" }
+anolis-provider-sdk = { git = "https://github.com/anolishq/anolis-provider-sdk-rust", rev = "543d20639755f6266bbfe8037ccac77991502a1a" }
 schemars = "1.2.3"
 serde = { version = "1.0.229", features = ["derive"] }
 
